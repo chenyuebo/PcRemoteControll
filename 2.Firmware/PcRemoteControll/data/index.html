@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>PCIE远程开机卡</title>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1, user-scalable=no' />
+
+    <script src="./vue.min.js"></script>
+    <script src="./axios.min.js"></script>
+    <style type="text/css">
+        body {
+            width: 100%;
+            padding: 0px;
+            margin: 0px;
+        }
+
+        .header {
+            height: 50px;
+            background-color: #E64A19;
+            color: #fff;
+        }
+
+        .header .title {
+            padding-left: 20px;
+            font-size: 1.2em;
+            line-height: 50px;
+        }
+
+        .main {
+            display: flex;
+            height: calc(100vh - 50px);
+        }
+
+        .nav {
+            display: flex;
+            flex-direction: column;
+            width: 150px;
+            height: 100%;
+            min-width: 150px;
+            background-color: rgb(48, 65, 86);
+        }
+
+        .nav a {
+            display: block;
+            color: rgb(191, 203, 217);
+            text-align: center;
+            padding: 14px 0px;
+            font-size: 14px;
+        }
+
+        .nav a:hover {
+            background-color: rgb(38, 52, 69);
+        }
+
+        .nav .active {
+            color: rgb(64, 158, 255);
+        }
+
+        .tabs {
+            background-color: #f6f6f6;
+            width: 100%;
+            padding: 30px 20px;
+            overflow: auto;
+        }
+
+        .tabs .tab {
+            height: 100%;
+            margin: 0 auto;
+        }
+
+        .tabs table {
+            margin: 0 auto;
+            background-color: #fff;
+            border: #ddd;
+            border-style: solid;
+            border-width: 1px;
+            border-collapse: collapse;
+            min-width: 600px;
+        }
+
+        .tabs th {
+            border: #ddd;
+            border-style: solid;
+            border-width: 1px;
+            padding: 8px;
+            background-color: #ddd;
+        }
+
+        .tabs td {
+            border: #ddd;
+            border-style: solid;
+            border-width: 1px;
+            padding: 8px;
+        }
+
+        .btn {
+            color: #fff;
+            width: 100%;
+            line-height: 2.5em;
+            font-size: 17px;
+            border-radius: 5px;
+            border-width: 0px;
+            background-color: #5bc0de;
+            border-color: #46b8da;
+        }
+
+        .btn:hover {
+            background-color: #31b0d5;
+            border-color: #269abc;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div class="header">
+            <div class="title">PCIE远程开机卡</div>
+        </div>
+        <div class="main">
+            <div class="nav">
+                <a v-for="(item, index) in tabs" @click="changeTab(index)"
+                    :class="{'active': tabIndex == index}">{{item}}</a>
+            </div>
+            <div class="tabs">
+                <div id='tabState' v-show="tabIndex == 0" class="tab">
+                    <table class='gridtable'>
+                        <thead>
+                            <tr>
+                                <th colspan='2'>设备状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>设备名称</td>
+                                <td>{{ status.clientId }}</td>
+                            </tr>
+                            <tr>
+                                <td>开机时间</td>
+                                <td>{{ fmtRunTime() }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>空闲内存</td>
+                                <td>{{ status.freeHeap }}</td>
+                            </tr>
+                            <tr>
+                                <td>WiFi模式</td>
+                                <td>STA</td>
+                            </tr>
+                            <tr>
+                                <td>信号强度RSSI</td>
+                                <td>{{ status.rssi }}</td>
+                            </tr>
+                            <tr>
+                                <td>IP地址</td>
+                                <td>{{ status.ip }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="tabControll" class="tab" v-show="tabIndex == 1">
+                    <table class='gridtable'>
+                        <tbody>
+                            <tr>
+                                <td colspan='2'>
+                                    <button class='btn' @click="reqClick()">模拟点击</button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan='2'>
+                                    <button class='btn' @click="reqReboot()">设备重启</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="tabSetup" class="tab" v-show="tabIndex == 2">
+                    设置
+                </div>
+                <div id="tabUpdate" class="tab" v-show="tabIndex == 3">
+                    <table class='gridtable'>
+                        <thead>
+                            <tr>
+                                <th colspan='2'>固件升级</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>当前版本</td>
+                                <td>{{ versionInfo.firmware }}</td>
+                            </tr>
+                            <form method='POST' action='/update' enctype='multipart/form-data'>
+                                <tr>
+                                    <td colspan='2'><a class='file'><input type='file' accept='.bin,.bin.gz'
+                                                name='firmware' @change="fileChange1">选择文件</a></td>
+                                </tr>
+                                <tr>
+                                    <td colspan='2'>
+                                        <button class='btn' @click="submitUpdate('firmware')">升级</button>
+                                    </td>
+                                </tr>
+                            </form>
+                        </tbody>
+                    </table>
+
+                    <table class='gridtable' style="margin-top: 20px;">
+                        <thead>
+                            <tr>
+                                <th colspan='2'>文件系统升级</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>当前版本</td>
+                                <td>{{ versionInfo.filesystem }}</td>
+                            </tr>
+                            <form method='POST' action='/update' enctype='multipart/form-data'>
+                                <tr>
+                                    <td colspan='2'><a class='file'><input type='file' accept='.bin,.bin.gz'
+                                                name='filesystem' @change="fileChange2">选择文件</a></td>
+                                </tr>
+                                <tr>
+                                    <td colspan='2'>
+                                        <button class='btn' @click="submitUpdate('filesystem')">升级</button>
+                                    </td>
+                                </tr>
+                            </form>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="tabAbout" class="tab" v-show="tabIndex == 4">
+                    <table class='gridtable'>
+                        <thead>
+                            <tr>
+                                <th colspan='2'>硬件参数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>ESP芯片ID</td>
+                                <td>{{ deviceInfo.chipId }}</td>
+                            </tr>
+                            <tr>
+                                <td>CPU频率</td>
+                                <td>{{ deviceInfo.cpuFreq }}</td>
+                            </tr>
+                            <tr>
+                                <td>Flash芯片 ID</td>
+                                <td>{{ deviceInfo.flashChipId }}</td>
+                            </tr>
+                            <tr>
+                                <td>Flash大小</td>
+                                <td>{{ deviceInfo.flashChipSize }}</td>
+                            </tr>
+                            <tr>
+                                <td>固件大小</td>
+                                <td>{{ deviceInfo.sketchSize }}</td>
+                            </tr>
+                            <tr>
+                                <td>固件MD5</td>
+                                <td>{{ deviceInfo.sketchMD5 }}</td>
+                            </tr>
+                            <tr>
+                                <td>空闲程序空间</td>
+                                <td>{{ deviceInfo.freeSketchSize }}</td>
+                            </tr>
+                            <tr>
+                                <td>MAC地址</td>
+                                <td>{{ deviceInfo.macAddr }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var app = new Vue({
+            el: "#app",
+            data: {
+                msg: "hello",
+                tabs: ["状态", "控制", "设置", "升级", "关于"],
+                tabIndex: 0,
+                status: {},
+                deviceInfo: {},
+                versionInfo: {},
+                firmwareFile: null,
+                fileSystemFile: null,
+            },
+            methods: {
+                changeTab: function (index) {
+                    console.log(index);
+                    this.tabIndex = index;
+                    if (index == 0) {
+                        app.getStatus();
+                    } else if (index == 3) {
+                        app.getVersionInfo();
+                    } else if (index == 4) {
+                        app.getDeviceInfo();
+                    }
+                },
+                fmtRunTime: function () {
+                    var time = app.status.runTime;
+                    const second = time % 60;
+                    const minute = Math.floor(time / 60 % 60);
+                    const hour = Math.floor(time / 60 / 60 % 24);
+                    const days = Math.floor(time / 60 / 60 / 24);
+                    return `${days}天${hour}小时${minute}分钟${second}秒`;
+                },
+                getStatus: function () {
+                    axios.get("/status")
+                        .then(function (response) {
+                            app.status = response.data;
+                        }, function (error) {
+                        });
+                },
+                getDeviceInfo: function () {
+                    axios.get("/deviceInfo")
+                        .then(function (response) {
+                            app.deviceInfo = response.data;
+                        }, function (error) {
+                        });
+                },
+                getVersionInfo: function () {
+                    axios.get("/version")
+                        .then(function (response) {
+                            app.versionInfo = response.data;
+                        }, function (error) {
+                        });
+                },
+                reqClick: function () {
+                    axios.get("/click")
+                        .then(function (response) {
+                        }, function (error) {
+                        });
+                },
+                reqReboot: function () {
+                    axios.get("/reboot")
+                        .then(function (response) {
+                        }, function (error) {
+                        });
+                },
+                fileChange1: function (event) {
+                    console.log(event);
+                    app.firmwareFile = event.target.files[0];
+                    console.log(app.firmwareFile);
+                },
+                fileChange2: function (event) {
+                    console.log(event);
+                    app.fileSystemFile = event.target.files[0];
+                    console.log(app.fileSystemFile);
+                },
+                submitUpdate: function (name) {
+                    const formData = new FormData();
+                    if ("firmware" == name) {
+                        formData.append("firmware", app.firmwareFile);
+                    } else if ("filesystem" == name) {
+                        formData.append("filesystem", app.fileSystemFile);
+                    }
+                    axios.post("/update", formData)
+                        .then(function (response) {
+                            if (response.data.indexOf("Success") != -1) {
+                                alert("更新成功");
+                            } else {
+                                alert("更新失败:" + response.data);
+                            }
+                        }, function (error) {
+
+                        });
+
+                }
+            }
+        });
+        app.changeTab(0);
+    </script>
+</body>
+
+</html>
